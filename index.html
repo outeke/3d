@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>沙盘 3D 手机端诊断</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #b0ceaf; }
+        canvas { display: block; }
+        #ui-layer {
+            position: absolute;
+            top: 20px;
+            width: 100%;
+            text-align: center;
+            font-family: sans-serif;
+            pointer-events: none;
+            z-index: 10;
+        }
+        #info { font-size: 18px; color: #333; font-weight: bold; margin-bottom: 10px; }
+        #debug { font-size: 14px; color: red; font-weight: bold; padding: 0 15px; word-wrap: break-word; }
+    </style>
+</head>
+<body>
+    <div id="ui-layer">
+        <div id="info">准备加载沙盘...</div>
+        <div id="debug"></div>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+        const infoEl = document.getElementById('info');
+        const debugEl = document.getElementById('debug');
+
+        const scene = new THREE.Scene();
+        // 设置一个完美的上帝视角相机
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 5000);
+        camera.position.set(15, 15, 15);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
+        directionalLight.position.set(10, 20, 10);
+        scene.add(directionalLight);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+
+        const loader = new GLTFLoader();
+        
+        // 开始加载你的模型
+        loader.load('sandtable.glb', 
+            function (gltf) {
+                const model = gltf.scene;
+                
+                // 核心修复：不管模型多大，强制缩放和居中
+                const box = new THREE.Box3().setFromObject(model);
+                const size = box.getSize(new THREE.Vector3());
+                const maxDim = Math.max(size.x, size.y, size.z);
+                
+                // 强行把最大边长缩放到 15 个单位长度
+                const scale = 15 / maxDim; 
+                model.scale.set(scale, scale, scale);
+                
+                // 重新计算缩放后的中心并完美居中
+                const newBox = new THREE.Box3().setFromObject(model);
+                const center = newBox.getCenter(new THREE.Vector3());
+                model.position.sub(center);
+
+                scene.add(model);
+                infoEl.innerText = "加载成功！请滑动屏幕";
+                infoEl.style.color = "green";
+            }, 
+            function (xhr) {
+                // 实时显示加载进度
+                if (xhr.total > 0) {
+                    const percent = Math.round(xhr.loaded / xhr.total * 100);
+                    infoEl.innerText = '加载进度: ' + percent + '%';
+                } else {
+                    infoEl.innerText = '正在下载模型...';
+                }
+            }, 
+            function (error) {
+                // 如果出错，直接把错误打印在屏幕上
+                infoEl.innerText = "❌ 模型加载失败";
+                debugEl.innerText = "错误详情: " + (error.message || error);
+                console.error(error);
+            }
+        );
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', onWindowResize, false);
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+    </script>
+</body>
+</html>
